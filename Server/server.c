@@ -7,7 +7,50 @@
 #include <limits.h>
 
 #define BUFFER_SIZE 1024
+
 #define FILE_FOLDER "./root/"
+
+void handle_request(int socket_fd) {
+    char filename_buffer[BUFFER_SIZE] = {0};
+
+    // Receive the filename from the client
+    read(socket_fd, filename_buffer, BUFFER_SIZE);
+    filename_buffer[strcspn(filename_buffer, "\n")] = '\0'; // Remove potential newline
+
+    // Construct the full file path
+    char file_path[PATH_MAX];
+    snprintf(file_path, sizeof(file_path), "%s%s", FILE_FOLDER, filename_buffer);
+
+    // Open the file
+    printf("Opening root/%s\n", filename_buffer);
+    FILE *file = fopen(file_path, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        send(socket_fd, "File not found or cannot be opened\n", 35, 0);
+        return;
+    }
+
+    // Determine the file size
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Send the file size to the client
+    char size_msg[BUFFER_SIZE];
+    snprintf(size_msg, sizeof(size_msg), "%ld\n", file_size); // Include newline as a flag
+    send(socket_fd, size_msg, strlen(size_msg), 0);
+
+    // Read the file and send its contents
+    char file_content[BUFFER_SIZE];
+    size_t bytes_read;
+    while ((bytes_read = fread(file_content, 1, BUFFER_SIZE, file)) > 0) {
+        send(socket_fd, file_content, bytes_read, 0);
+    }
+
+    // Clean up
+    fclose(file);
+}
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -20,9 +63,6 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-    char buffer[BUFFER_SIZE] = {0};
-    char file_path[PATH_MAX];
-    FILE *file;
 
     // Creating socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -48,34 +88,14 @@ int main(int argc, char *argv[]) {
         perror("listen");
         exit(EXIT_FAILURE);
     }
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-        perror("accept");
-        exit(EXIT_FAILURE);
-    }
-    read(new_socket, buffer, BUFFER_SIZE);
-
-    // Construct the full file path
-    snprintf(file_path, sizeof(file_path), "%s%s", FILE_FOLDER, buffer);
-
-    // Attempt to open the file
-    //file = fopen(file_path, "r");
-    file = fopen("./root/first.txt","r");
     
-    printf("Opening root/%s",buffer);
+    while(1){
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
     
-    char buffer1[1024];  // Buffer to store file contents
-    while (fgets(buffer1, sizeof(buffer1), file) != NULL) {
-        printf("%s\n", buffer1);
-    }
-
-    if (file == NULL) {
-        perror("Error opening file");
-        send(new_socket, "File not found or cannot be opened", 35, 0);
-    } else {
-        // Read file and send its contents back to the client (optional)
-        // For example purposes, let's just confirm the file was opened
-        send(new_socket, "File opened successfully", 25, 0);
-        fclose(file);
+        handle_request(new_socket);
     }
 
     close(new_socket);

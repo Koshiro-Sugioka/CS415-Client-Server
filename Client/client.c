@@ -27,6 +27,7 @@ int main(int argc, char *argv[]) {
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
+    printf("Connecting the local port: %s\n", argv[1]);
 
     if(inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
         printf("\nInvalid address/ Address not supported \n");
@@ -52,14 +53,30 @@ int main(int argc, char *argv[]) {
         printf("\n Send failed \n");
         return -1;
     }
-    printf("Message sent\n");
 
     memset(buffer, 0, BUFFER_SIZE);  // Clear buffer
     if (read(sock, buffer, BUFFER_SIZE) < 0) {
         printf("\n Read failed \n");
         return -1;
     }
-    printf("Message from server: %s\n", buffer);
+    //printf("Message from server: %s\n", buffer);
+
+    char *newline_pos = strchr(buffer, '\n');
+
+    int length = newline_pos - buffer;
+    char line[length + 1];  // +1 for the null terminator
+
+    strncpy(line, buffer, length);
+    line[length] = '\0';  // Add null terminator
+
+    printf("File size: %s\n", line);
+    int i = 0;
+    while(i < atoi(line)){
+        printf("%c", buffer[i+length+1]);
+        i++;
+    }
+    printf("\n");
+    
 
     close(sock);
     return 0;

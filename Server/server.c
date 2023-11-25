@@ -5,12 +5,18 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <limits.h>
+#include <pthread.h>
+
 
 #define BUFFER_SIZE 1024
 
 #define FILE_FOLDER "./root/"
 
-void handle_request(int socket_fd) {
+void* handle_request(void *socket_fd_ptr) {
+    printf("New Connection\n");
+    int socket_fd = *((int*)socket_fd_ptr);
+    free(socket_fd_ptr); 
+    
     char filename_buffer[BUFFER_SIZE] = {0};
 
     // Receive the filename from the client
@@ -33,6 +39,7 @@ void handle_request(int socket_fd) {
     // Determine the file size
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
+    printf("Size is %ld bytes.\n", file_size);
     fseek(file, 0, SEEK_SET);
 
     // Send the file size to the client
@@ -49,6 +56,9 @@ void handle_request(int socket_fd) {
 
     // Clean up
     fclose(file);
+    
+    close(socket_fd); // Close the client socket
+    return NULL;
 }
 
 
@@ -89,13 +99,29 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    while(1){
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-            perror("accept");
-            exit(EXIT_FAILURE);
+    while (1) {
+        int *new_socket_ptr = malloc(sizeof(int));
+        if (new_socket_ptr == NULL) {
+            perror("Failed to allocate memory for socket descriptor");
+            continue;
         }
-    
-        handle_request(new_socket);
+
+        *new_socket_ptr = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
+        if (*new_socket_ptr < 0) {
+            perror("accept");
+            free(new_socket_ptr);
+            continue;
+        }
+
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, handle_request, new_socket_ptr) != 0) {
+            perror("Failed to create thread");
+            close(*new_socket_ptr);
+            free(new_socket_ptr);
+            continue;
+        }
+
+        pthread_detach(thread_id);
     }
 
     close(new_socket);
